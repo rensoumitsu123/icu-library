@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICU資料ライブラリ</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     ▼▼▼ ① ここに Supabase の接続情報を貼ってください ▼▼▼
+     STAT/VENT の index.html の先頭にある SUPABASE_URL と
+     SUPABASE_ANON_KEY を、そのままコピーして下の JS（②）に貼ります。
+     （このコメントは目印。実際の貼り付け場所は下の <script> 内）
+     ============================================================ */
+
+  :root{
+    --bg:#f4f6f8; --surface:#ffffff; --ink:#1b2733; --ink-soft:#5b6b7b;
+    --line:#e2e8ef; --teal:#0d8a8a; --teal-deep:#0a6b6b; --teal-soft:#e6f4f4;
+    --blue:#2b6cb0; --green:#2f855a; --amber:#c05621; --purple:#7c5cbf;
+    --shadow:0 1px 3px rgba(20,40,60,.08),0 6px 20px rgba(20,40,60,.06);
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);
+    -webkit-font-smoothing:antialiased;line-height:1.6;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,select,textarea{font-family:inherit;font-size:15px}
+
+  /* ---------- ログイン ---------- */
+  #login{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#0a6b6b,#0d8a8a 60%,#13a0a0);padding:20px;
+  }
+  .login-card{
+    background:var(--surface);border-radius:20px;padding:40px 34px;width:100%;max-width:380px;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:center;
+  }
+  .login-card .logo{font-size:34px}
+  .login-card h1{font-size:21px;margin:10px 0 4px;letter-spacing:.02em}
+  .login-card p{color:var(--ink-soft);font-size:13px;margin-bottom:24px}
+  .field{text-align:left;margin-bottom:14px}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:5px}
+  .field input{
+    width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;
+    transition:border-color .15s;
+  }
+  .field input:focus{outline:none;border-color:var(--teal)}
+  .btn-primary{
+    width:100%;background:var(--teal);color:#fff;font-weight:700;padding:13px;
+    border-radius:10px;font-size:15px;transition:background .15s;margin-top:6px;
+  }
+  .btn-primary:hover{background:var(--teal-deep)}
+  .login-err{color:#c0392b;font-size:13px;min-height:18px;margin-top:10px}
+
+  /* ---------- アプリ枠 ---------- */
+  #app{display:none;min-height:100vh}
+  header.topbar{
+    background:var(--surface);border-bottom:1px solid var(--line);
+    padding:0 20px;display:flex;align-items:center;gap:18px;height:60px;
+    position:sticky;top:0;z-index:30;
+  }
+  .brand{font-weight:900;font-size:18px;letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+  .brand .dot{color:var(--teal)}
+  .tabs{display:flex;gap:4px;margin-left:8px}
+  .tab{
+    padding:8px 16px;border-radius:9px;font-weight:700;font-size:14px;color:var(--ink-soft);
+  }
+  .tab.active{background:var(--teal-soft);color:var(--teal-deep)}
+  .spacer{flex:1}
+  .who{font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:10px}
+  .who .role{background:var(--teal-soft);color:var(--teal-deep);padding:3px 10px;border-radius:20px;font-weight:700;font-size:12px}
+  .logout{font-size:13px;color:var(--ink-soft);text-decoration:underline}
+  .adminbtn{font-size:12px;font-weight:700;color:var(--teal-deep);background:var(--teal-soft);padding:5px 13px;border-radius:20px;white-space:nowrap}
+  .adminbtn:hover{background:#d5ecec}
+
+  main{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
+
+  /* ---------- 検索バー ---------- */
+  .searchbar{position:relative;margin-bottom:22px}
+  .searchbar input{
+    width:100%;padding:13px 16px 13px 44px;border:1.5px solid var(--line);
+    border-radius:12px;background:var(--surface);box-shadow:var(--shadow);
+  }
+  .searchbar input:focus{outline:none;border-color:var(--teal)}
+  .searchbar .ico{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--ink-soft)}
+
+  /* ---------- パンくず ---------- */
+  .crumbs{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:18px;flex-wrap:wrap}
+  .crumbs a{color:var(--teal-deep);font-weight:700;text-decoration:none;cursor:pointer}
+  .crumbs span{color:var(--ink-soft)}
+
+  /* ---------- カテゴリーカード ---------- */
+  /* iPad13(横/縦)で全項目を見渡せるよう、アイコンは現状の30pxを維持しつつタイル幅をコンパクトに */
+  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(192px,1fr));gap:14px}
+  .cat-card{
+    background:var(--surface);border-radius:var(--radius);padding:20px 18px;box-shadow:var(--shadow);
+    border:1px solid var(--line);text-align:left;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden;
+  }
+  .cat-card:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(20,40,60,.12)}
+  .cat-card .emoji{font-size:30px;line-height:1}
+  .cat-card h3{font-size:18px;margin:9px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cat-card p{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cat-card .bar{position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--bar,#0d8a8a)}
+  .cat-card .count{margin-top:10px;font-size:12px;color:var(--ink-soft);font-weight:700;white-space:nowrap}
+  .c-1{--bar:#d64545}  .c-2{--bar:#7c5cbf}  .c-3{--bar:#0d8a8a}  .c-4{--bar:#e0719c}
+  .c-5{--bar:#b3242b}  .c-6{--bar:#4a6fa5}  .c-7{--bar:#2f855a}  .c-8{--bar:#2b6cb0}
+  .c-9{--bar:#c05621}  .c-10{--bar:#9c6b3f} .c-11{--bar:#5b8a8a} .c-12{--bar:#607080}
+  .c-13{--bar:#d98a1f} .c-14{--bar:#3d8ea3}
+
+  /* ---------- サブカテゴリーチップ ---------- */
+  .sub-grid{display:flex;flex-wrap:wrap;gap:10px}
+  .sub-chip{
+    background:var(--surface);border:1.5px solid var(--line);border-radius:30px;
+    padding:10px 20px;font-weight:700;font-size:15px;box-shadow:var(--shadow);transition:.15s;white-space:nowrap;
+  }
+  .sub-chip:hover{border-color:var(--teal);color:var(--teal-deep)}
+  .sub-chip .n{color:var(--ink-soft);font-weight:500;font-size:13px;margin-left:6px}
+
+  /* ---------- 資料リスト ---------- */
+  .res-list{display:flex;flex-direction:column;gap:10px}
+  .list-sec{font-size:13px;font-weight:800;color:var(--ink-soft);margin:20px 2px 10px;padding-top:4px;border-top:1px solid var(--line)}
+  .res-item{
+    background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:12px;padding:16px 18px;
+    box-shadow:var(--shadow);display:flex;align-items:center;gap:16px;transition:.15s;text-align:left;width:100%;
+  }
+  .res-item:hover{border-color:var(--teal);transform:translateX(2px)}
+  .res-item.is-check{border-left-color:var(--green)}
+  .res-item.is-check:hover{border-color:var(--green)}
+  .res-item.is-scale{border-left-color:var(--purple)}
+  .res-item.is-scale:hover{border-color:var(--purple)}
+  .res-item .pdf-ico{font-size:24px;flex-shrink:0}
+  .res-item .meta{flex:1;min-width:0}
+  .res-item .meta .t{font-weight:700;font-size:16px;margin-bottom:3px}
+  .res-item .meta .sub{font-size:12px;color:var(--ink-soft)}
+  .res-item .tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .tag{background:var(--teal-soft);color:var(--teal-deep);font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px}
+  .res-item .stat{font-size:12px;color:var(--ink-soft);text-align:right;flex-shrink:0;line-height:1.7}
+  .res-item .stat b{color:var(--ink)}
+
+  .empty{text-align:center;color:var(--ink-soft);padding:50px 20px;font-size:15px}
+
+  /* ---------- PDFモーダル ---------- */
+  .modal-bg{
+    display:none;position:fixed;inset:0;background:rgba(10,30,40,.55);z-index:100;
+    align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-bg.show{display:flex}
+  .pdf-modal{
+    background:var(--surface);border-radius:16px;width:100%;max-width:900px;height:90vh;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .pdf-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+  .pdf-head .t{font-weight:700;font-size:17px;flex:1;min-width:0}
+  .pdf-head .x{font-size:22px;color:var(--ink-soft);padding:4px 8px}
+  .pdf-frame{flex:1;border:none;width:100%;background:#525659}
+  .pdf-view{flex:1;display:flex;flex-direction:column;min-height:0;background:#525659}
+  .pdf-canvas-wrap{flex:1;min-height:0;overflow:auto;display:flex;justify-content:center;align-items:center;padding:12px}
+  #pdfCanvas{max-width:100%;height:auto;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.35);display:block}
+  #pdfMsg{display:none;color:#e6edf2;font-size:14px;text-align:center;padding:40px 24px;line-height:1.7;align-self:center;margin:auto}
+  .pdf-nav{display:flex;align-items:center;justify-content:center;gap:14px;padding:10px;background:#3f4347}
+  .pdf-nav button{color:#fff;font-weight:700;font-size:14px;padding:9px 18px;border-radius:8px;background:rgba(255,255,255,.14);transition:.12s}
+  .pdf-nav button:hover{background:rgba(255,255,255,.26)}
+  .pdf-nav button:disabled{opacity:.3;cursor:default}
+  .pdf-nav #pdfPageInfo{color:#fff;font-size:14px;min-width:66px;text-align:center;font-weight:700}
+  .pdf-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .like-btn{
+    display:flex;align-items:center;gap:8px;background:var(--surface);border:1.5px solid var(--line);
+    border-radius:30px;padding:9px 18px;font-weight:700;font-size:15px;transition:.15s;color:var(--ink);white-space:nowrap;
+  }
+  .like-btn:hover{border-color:var(--teal)}
+  .like-btn.liked{background:#fff4e6;border-color:var(--amber);color:var(--amber)}
+  .pdf-foot .views{font-size:13px;color:var(--ink-soft)}
+  .pdf-foot .dl{margin-left:auto;font-size:14px;color:var(--teal-deep);font-weight:700;text-decoration:none}
+
+  /* ---------- 管理画面 ---------- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);margin-bottom:22px}
+  .panel h2{font-size:17px;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .form-row.full{grid-template-columns:1fr}
+  .form-group label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:5px}
+  .form-group input,.form-group select{
+    width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;background:#fff;
+  }
+  .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--teal)}
+  .hint{font-size:11px;color:var(--ink-soft);margin-top:4px}
+  .file-drop{
+    border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--ink-soft);
+    cursor:pointer;transition:.15s;
+  }
+  .file-drop:hover{border-color:var(--teal);background:var(--teal-soft)}
+  .file-drop.has{border-color:var(--teal);color:var(--teal-deep);background:var(--teal-soft);font-weight:700}
+  .upload-status{font-size:13px;margin-top:10px;min-height:18px}
+
+  table.admin{width:100%;border-collapse:collapse;font-size:14px}
+  table.admin th,table.admin td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  table.admin th{font-size:12px;color:var(--ink-soft);font-weight:700;text-transform:none}
+  table.admin td .mini{font-size:12px;color:var(--ink-soft)}
+  .pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill.good{background:#e6f6ec;color:#2f855a}
+  .pill.fix{background:#fdecea;color:#c0392b}
+  .pill.bury{background:#fef5e7;color:#c05621}
+  .pill.low{background:#eef0f2;color:#5b6b7b}
+  .row-act{display:flex;gap:8px}
+  .row-act button{font-size:12px;font-weight:700;padding:5px 11px;border-radius:7px}
+  .btn-edit{background:var(--teal-soft);color:var(--teal-deep)}
+  .btn-del{background:#fdecea;color:#c0392b}
+  .btn-add{background:var(--teal);color:#fff;font-weight:700;padding:11px 22px;border-radius:9px}
+  .btn-ghost{background:#eef0f2;color:var(--ink);font-weight:700;padding:11px 22px;border-radius:9px}
+  .sort-note{font-size:12px;color:var(--ink-soft);margin-bottom:10px}
+
+  /* ---------- 付属ツール（チェックリスト・スケール） ---------- */
+  .pdf-foot .tool-open{
+    display:flex;align-items:center;gap:8px;background:var(--teal-soft);border:1.5px solid var(--teal);
+    border-radius:30px;padding:9px 18px;font-weight:700;font-size:15px;color:var(--teal-deep);white-space:nowrap;
+  }
+  .pdf-foot .tool-open:hover{background:#d5ecec}
+  .tool-bar-track{flex:1;height:8px;background:#eef0f2;border-radius:999px;overflow:hidden}
+  .tool-bar-fill{height:100%;width:0;background:var(--green);transition:width .2s}
+  .ck-row{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--surface);transition:.12s}
+  .ck-row:hover{background:#f7fafa}
+  .ck-row.done{background:#e6f6ec;border-color:#9ad3b0}
+  .ck-box{width:22px;height:22px;border-radius:6px;border:1.6px solid #cdd6df;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:#fff;font-size:14px;font-weight:700}
+  .ck-row.done .ck-box{background:var(--green);border-color:var(--green)}
+  .ck-row.done .ck-lbl{color:var(--green);font-weight:700}
+  .ck-lbl{font-size:15px}
+  .sc-item{margin-bottom:14px;break-inside:avoid;-webkit-column-break-inside:avoid}
+  .sc-item .q{font-size:14px;margin-bottom:7px;font-weight:700;color:var(--ink)}
+  /* 項目数の多いスケール（NIHSS等）は3列＋選択肢を横並びにして1画面に収める */
+  #scList.multi{column-count:3;column-gap:14px}
+  #scList.multi .sc-item{margin-bottom:10px}
+  #scList.multi .sc-item .q{font-size:13px;margin-bottom:5px}
+  #scList.multi .sc-opts{flex-direction:row;flex-wrap:wrap;gap:5px}
+  #scList.multi .sc-opt{width:auto;flex:0 1 auto;padding:6px 9px;font-size:12px;gap:6px;border-radius:7px;line-height:1.3}
+  #scList.multi .sc-opt .v{min-width:20px;height:20px;font-size:11px}
+  @media(max-width:760px){ #scList.multi{column-count:2} }
+  @media(max-width:480px){ #scList.multi{column-count:1} }
+  .sc-chips{display:flex;gap:7px;flex-wrap:wrap}
+  .sc-chip{min-width:42px;height:38px;padding:0 6px;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);font-size:15px;font-weight:700;cursor:pointer;color:var(--ink-soft);transition:.12s}
+  .sc-chip:hover{background:#f7fafa}
+  .sc-chip.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+  .sc-opts{display:flex;flex-direction:column;gap:7px}
+  .sc-opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);font-size:14px;color:var(--ink);cursor:pointer;transition:.12s;line-height:1.45}
+  .sc-opt:hover{background:#f7fafa}
+  .sc-opt.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+  .sc-opt .v{flex:0 0 auto;min-width:26px;height:26px;padding:0 4px;border-radius:6px;background:#eef0f2;color:var(--ink-soft);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .sc-opt.sel .v{background:rgba(255,255,255,.28);color:#fff}
+  .tool-reset{font-size:13px;font-weight:700;color:var(--ink-soft);background:#eef0f2;padding:7px 14px;border-radius:8px}
+  .tool-reset:hover{background:#e2e6ea}
+  .tool-total{font-size:13px;color:var(--ink-soft)}
+  .tool-total b{font-size:26px;color:var(--ink);font-weight:900;margin:0 4px}
+  .tool-band{font-size:13px;font-weight:700;padding:5px 12px;border-radius:8px;background:#eef0f2;color:#5b6b7b}
+  .tool-band.b-ok{background:#e6f6ec;color:#2f855a}
+  .tool-band.b-warn{background:#fef5e7;color:#c05621}
+  .tool-band.b-bad{background:#fdecea;color:#c0392b}
+  .tool-note{font-size:11px;color:var(--ink-soft);margin-top:12px}
+  .sample-banner{background:#fff4e6;border:1px solid #f0c98a;color:#9a5a00;font-size:12px;font-weight:700;padding:9px 12px;border-radius:9px;margin-bottom:14px;line-height:1.6}
+
+  /* ---------- 資料＋ツール 分割表示（iPad/横幅のある画面） ---------- */
+  @media(min-width:768px){
+    body.split-tool #pdfModal{justify-content:flex-start}
+    body.split-tool #pdfModal > .pdf-modal{width:calc(50% - 28px);max-width:none}
+    body.split-tool #toolModal{background:transparent;justify-content:flex-end;pointer-events:none}
+    body.split-tool #toolModal > .pdf-modal{pointer-events:auto}
+  }
+
+  @media(max-width:620px){
+    .form-row{grid-template-columns:1fr}
+    .tabs .tab{padding:8px 11px;font-size:13px}
+    .brand{font-size:16px}
+    main{padding:18px 14px 50px}
+    .res-item .stat{display:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== ログイン ===================== -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo">📚</div>
+    <h1>ICU資料ライブラリ</h1>
+    <p>パスワードを入力してください</p>
+    <div class="field">
+      <label>パスワード</label>
+      <input id="loginPw" type="password" autocomplete="current-password" placeholder="パスワード">
+    </div>
+    <button class="btn-primary" onclick="doLogin()">ログイン</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ===================== アプリ本体 ===================== -->
+<div id="app">
+  <header class="topbar">
+    <div class="brand">📚 ICU資料ライブラリ<span class="dot">.</span></div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="spacer"></div>
+    <div class="who">
+      <span class="role" id="roleLabel"></span>
+      <button class="adminbtn" id="adminBtn" onclick="openAdminPrompt()">管理者</button>
+      <a class="logout" onclick="doLogout()">ログアウト</a>
+    </div>
+  </header>
+  <main id="content"></main>
+</div>
+
+<!-- ===================== PDFプレビュー モーダル ===================== -->
+<div class="modal-bg" id="pdfModal">
+  <div class="pdf-modal">
+    <div class="pdf-head">
+      <span class="t" id="pdfTitle"></span>
+      <button class="x" onclick="closePdf()">✕</button>
+    </div>
+    <div class="pdf-view">
+      <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
+        <canvas id="pdfCanvas"></canvas>
+        <div id="pdfMsg"></div>
+      </div>
+      <div class="pdf-nav">
+        <button id="pdfPrev" onclick="pdfPage(-1)">◀ 前へ</button>
+        <span id="pdfPageInfo">– / –</span>
+        <button id="pdfNext" onclick="pdfPage(1)">次へ ▶</button>
+      </div>
+    </div>
+    <div class="pdf-foot">
+      <button class="like-btn" id="likeBtn" onclick="toggleLike()">👍 役に立った <span id="likeCount">0</span></button>
+      <span class="views">閲覧 <b id="viewCount">0</b> 回</span>
+      <button class="tool-open" id="toolBtn" style="display:none"></button>
+      <a class="dl" id="dlLink" href="#" target="_blank" rel="noopener">⬇ ダウンロード</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== アップロード/編集 モーダル ===================== -->
+<div class="modal-bg" id="formModal">
+  <div class="pdf-modal" style="max-width:560px;height:auto;max-height:92vh;overflow:auto">
+    <div class="pdf-head">
+      <span class="t" id="formTitle">資料を追加</span>
+      <button class="x" onclick="closeForm()">✕</button>
+    </div>
+    <div style="padding:22px">
+      <div class="form-group" style="margin-bottom:14px">
+        <label>PDFファイル</label>
+        <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()">
+          クリックしてPDFを選択（PDFのみ）
+        </div>
+        <input type="file" id="fileInput" accept="application/pdf" style="display:none" onchange="onFilePick()">
+        <div class="hint" id="fileHint"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label>タイトル</label>
+        <input id="fTitle" type="text" placeholder="例）小児の人工呼吸器設定の基本">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>大カテゴリー</label>
+          <select id="fCategory" onchange="refreshSubDatalist()"></select>
+        </div>
+        <div class="form-group">
+          <label>サブカテゴリー</label>
+          <input id="fSub" list="subList" placeholder="例）小児 / 心臓 / 面会">
+          <datalist id="subList"></datalist>
+          <div class="hint">既存の候補から選ぶと表記が揃います</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>年度</label>
+          <input id="fYear" list="yearList" placeholder="例）令和8年度">
+          <datalist id="yearList"></datalist>
+          <div class="hint">資料の版（改訂年度）の目印に</div>
+        </div>
+        <div class="form-group">
+          <label>タグ（カンマ区切り・任意）</label>
+          <input id="fTags" list="tagList" placeholder="例）人工呼吸器, 新生児">
+          <datalist id="tagList"></datalist>
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="form-group">
+          <label>付属ツール（任意）</label>
+          <select id="fTool"></select>
+          <div class="hint">この資料を開いたとき、下部のボタンから開けるチェックリスト／スケール</div>
+        </div>
+      </div>
+      <div class="upload-status" id="formStatus"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-ghost" onclick="closeForm()">キャンセル</button>
+        <button class="btn-add" id="formSubmit" onclick="submitForm()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 管理者モード切替 モーダル ===================== -->
+<div class="modal-bg" id="adminModal">
+  <div class="pdf-modal" style="max-width:380px;height:auto;max-height:92vh;overflow:auto">
+    <div class="pdf-head">
+      <span class="t">管理者モードに切り替え</span>
+      <button class="x" onclick="closeAdminPrompt()">✕</button>
+    </div>
+    <div style="padding:22px">
+      <div class="form-group" style="margin-bottom:14px">
+        <label>管理者パスワード</label>
+        <input id="adminPw" type="password" autocomplete="off" placeholder="管理者パスワード">
+      </div>
+      <div class="upload-status" id="adminErr"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-ghost" onclick="closeAdminPrompt()">キャンセル</button>
+        <button class="btn-add" id="adminSubmit" onclick="submitAdmin()">管理者モードにする</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 付属ツール（チェックリスト・スケール） モーダル ===================== -->
+<div class="modal-bg" id="toolModal">
+  <div class="pdf-modal" id="toolCard" style="max-width:520px;height:auto;max-height:92vh;overflow:auto">
+    <div class="pdf-head">
+      <span class="t" id="toolTitle"></span>
+      <button class="x" onclick="closeTool()">✕</button>
+    </div>
+    <div id="toolBody" style="padding:20px"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   ② ここに Supabase の接続情報を貼ってください
+   STAT/VENT の index.html 先頭にある2つの値をコピペしてください。
+   ============================================================ */
+const SUPABASE_URL      = 'https://qepfuorcodwenxzadbts.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlcGZ1b3Jjb2R3ZW54emFkYnRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NjE3MzIsImV4cCI6MjA5NTQzNzczMn0.woYxAkG8q4mgfeuHrGo5OpbuQioV-9QiQoI1uQFMwi8';
+
+/* ============================================================
+   ③ ログインは Supabase Auth で管理します（ソースにパスワードは持ちません）
+      ・管理者アカウント： admin@icu.local
+      ・病棟アカウント　： ward@icu.local
+      ログイン画面では「admin」「ward」だけ入力すればOK（内部で@icu.localを付与）
+   ============================================================ */
+const ADMIN_EMAIL  = 'admin@icu.local';   // このアカウントだけ管理者扱い
+const WARD_EMAIL   = 'ward@icu.local';    // 全員共通の閲覧用（パスワードのみログイン）
+const EMAIL_DOMAIN = '@icu.local';        // （旧）ID → メール変換用
+/* ============================================================ */
+
+const CATEGORIES = [
+  { key:'循環器・心臓', cls:'c-1',  emoji:'🫀', desc:'心臓・循環の管理' },
+  { key:'脳神経・脳',   cls:'c-2',  emoji:'🧠', desc:'脳・神経の管理' },
+  { key:'呼吸器',       cls:'c-3',  emoji:'🫁', desc:'呼吸・人工呼吸 管理' },
+  { key:'小児',         cls:'c-4',  emoji:'👶', desc:'小児・新生児' },
+  { key:'輸血関連',     cls:'c-5',  emoji:'🩸', desc:'輸血・血液製剤' },
+  { key:'医療機器',     cls:'c-6',  emoji:'🖥️', desc:'機器の取扱い・設定' },
+  { key:'感染・敗血症', cls:'c-7',  emoji:'🦠', desc:'感染対策・敗血症' },
+  { key:'腎臓・透析',   cls:'c-8',  emoji:'💧', desc:'腎・透析/CRRT' },
+  { key:'消化器・栄養', cls:'c-9',  emoji:'🍽', desc:'消化器・栄養' },
+  { key:'外傷・整形',   cls:'c-10', emoji:'🦴', desc:'外傷・整形・固定' },
+  { key:'その他疾患',   cls:'c-11', emoji:'🩺', desc:'その他の全身管理' },
+  { key:'ベッドサイドファイル', cls:'c-14', emoji:'🛏️', desc:'ベッド横の常備資料' },
+  { key:'業務',         cls:'c-12', emoji:'📋', desc:'面会・駐車 など' },
+  { key:'困ったとき',   cls:'c-13', emoji:'🆘', desc:'迷ったときの手引き' },
+];
+const BUCKET = 'library-files';
+
+/* ---------------- 大項目の並び順（使用頻度＝閲覧数の合計が多い順） ----------------
+   ・業務／困ったとき は常に末尾固定（よく探す位置が動かないように）
+   ・それ以外（ベッドサイドファイル含む）は閲覧数の合計が多い順に自動で並ぶ
+   ・閲覧数が同じ（0件含む）ときは CATEGORIES の元の順を保つ＝安定
+   ※ベッドサイドファイルも固定したくなったら下の配列に 'ベッドサイドファイル' を足すだけ */
+const PINNED_BOTTOM = ['業務','困ったとき'];
+function categoryViews(catKey){
+  return resources.filter(r=>r.category===catKey).reduce((s,r)=>s+(r.views||0),0);
+}
+function orderedCategories(){
+  const idx = new Map(CATEGORIES.map((c,i)=>[c.key,i]));
+  const main   = CATEGORIES.filter(c=>!PINNED_BOTTOM.includes(c.key));
+  const pinned = CATEGORIES.filter(c=> PINNED_BOTTOM.includes(c.key));
+  main.sort((a,b)=>{
+    const va=categoryViews(a.key), vb=categoryViews(b.key);
+    if(vb!==va) return vb-va;             // 閲覧数の多い順
+    return idx.get(a.key)-idx.get(b.key); // 同数は元の順で安定
+  });
+  pinned.sort((a,b)=>idx.get(a.key)-idx.get(b.key)); // 業務→困ったとき の順を維持
+  return [...main, ...pinned];
+}
+
+let sb = null;
+let state = { role:null, nav:'browse', cat:null, sub:null, search:'' };
+let imeComposing = false;   // 日本語IME変換中フラグ（変換途中の再描画を防ぐ）
+let resources = [];          // 全資料キャッシュ
+let current = null;          // プレビュー中の資料
+const likedKey = 'icu_lib_liked';     // localStorage：👍済みID
+const viewedKey = 'icu_lib_viewed';   // sessionStorage：閲覧済みID（重複カウント防止）
+
+/* ---------------- 起動 ---------------- */
+function initClient(){
+  if(SUPABASE_URL.startsWith('ここに')||SUPABASE_ANON_KEY.startsWith('ここに')){
+    return false;
+  }
+  if(!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return true;
+}
+function roleFromEmail(email){ return (email||'').toLowerCase()===ADMIN_EMAIL ? 'admin' : 'ward'; }
+
+window.addEventListener('DOMContentLoaded', async ()=>{
+  if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }
+  if(!initClient()){
+    document.getElementById('loginErr').textContent='接続情報が未設定です（コード②を確認）';
+    return;
+  }
+  document.getElementById('loginPw').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  document.getElementById('adminPw').addEventListener('keydown',e=>{ if(e.key==='Enter') submitAdmin(); });
+  // 既存のログインセッションがあれば復元
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session && session.user){
+    state.role = roleFromEmail(session.user.email);
+    enterApp();
+  }
+});
+
+/* ---------------- ログイン（パスワードのみ＝全員まず閲覧モード） ---------------- */
+async function doLogin(){
+  const pw = document.getElementById('loginPw').value;
+  const err = document.getElementById('loginErr');
+  if(!pw){ err.style.color='#c0392b'; err.textContent='パスワードを入力してください'; return; }
+  err.textContent='ログイン中…'; err.style.color='var(--ink-soft)';
+  // 入口は全員 ward アカウントでログイン（閲覧モード）
+  const { data, error } = await sb.auth.signInWithPassword({ email: WARD_EMAIL, password: pw });
+  if(error || !data.user){ err.style.color='#c0392b'; err.textContent='パスワードが違います'; return; }
+  err.textContent='';
+  state.role = roleFromEmail(data.user.email);
+  enterApp();
+}
+async function doLogout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  location.reload();
+}
+
+/* ---------------- 管理者モードへ切替（裏で admin アカウントに再ログイン） ---------------- */
+function openAdminPrompt(){
+  document.getElementById('adminPw').value='';
+  document.getElementById('adminErr').textContent='';
+  document.getElementById('adminModal').classList.add('show');
+  setTimeout(()=>document.getElementById('adminPw').focus(),50);
+}
+function closeAdminPrompt(){ document.getElementById('adminModal').classList.remove('show'); }
+async function submitAdmin(){
+  const pw  = document.getElementById('adminPw').value;
+  const err = document.getElementById('adminErr');
+  const btn = document.getElementById('adminSubmit');
+  if(!pw){ err.style.color='#c0392b'; err.textContent='管理者パスワードを入力してください'; return; }
+  btn.disabled=true; err.style.color='var(--ink-soft)'; err.textContent='切り替え中…';
+  // 管理者アカウントへ再ログイン（これでRLSの書込権限が有効になる）
+  const { data, error } = await sb.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  if(error || !data.user){ err.style.color='#c0392b'; err.textContent='管理者パスワードが違います'; btn.disabled=false; return; }
+  btn.disabled=false;
+  state.role = roleFromEmail(data.user.email);   // → 'admin'
+  closeAdminPrompt();
+  // 画面を管理者用に更新
+  state.nav='browse'; state.cat=null; state.sub=null; state.search='';
+  document.getElementById('roleLabel').textContent='管理者';
+  updateAdminBtn(); renderTabs();
+  await loadResources();   // 管理者セッションで読み直し
+}
+function updateAdminBtn(){
+  const b=document.getElementById('adminBtn');
+  if(b) b.style.display = (state.role==='admin') ? 'none' : '';
+}
+// 追加フォームの大カテゴリー選択肢を CATEGORIES から生成（今後の項目追加もここ1か所でOK）
+function buildCategorySelect(){
+  const sel=document.getElementById('fCategory');
+  if(sel) sel.innerHTML = CATEGORIES.map(c=>`<option value="${esc(c.key)}">${esc(c.key)}</option>`).join('');
+}
+
+function enterApp(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('roleLabel').textContent = state.role==='admin' ? '管理者' : '病棟';
+  updateAdminBtn();
+  buildCategorySelect();
+  buildToolSelect();
+  renderTabs();
+  loadResources();
+}
+
+/* ---------------- タブ ---------------- */
+function renderTabs(){
+  const tabs = [{k:'browse',label:'資料を探す'},{k:'tools',label:'🧮 スケール・チェックリスト'}];
+  if(state.role==='admin'){
+    tabs.push({k:'manage',label:'資料を管理'});
+    tabs.push({k:'stats',label:'活用状況'});
+    tabs.push({k:'settings',label:'パスワード'});
+  }
+  document.getElementById('tabs').innerHTML = tabs.map(t=>
+    `<button class="tab ${state.nav===t.k?'active':''}" onclick="goTab('${t.k}')">${t.label}</button>`
+  ).join('');
+}
+function goTab(k){
+  state.nav=k; state.cat=null; state.sub=null; state.search='';
+  renderTabs(); render();
+}
+
+/* ---------------- データ取得 ---------------- */
+async function loadResources(){
+  const { data, error } = await sb.from('library_resources').select('*').order('created_at',{ascending:false});
+  if(error){ console.error(error); resources=[]; }
+  else { resources = data || []; }
+  render();
+}
+
+/* ---------------- 画面振り分け ---------------- */
+function render(){
+  const c = document.getElementById('content');
+  if(state.nav==='tools'){ c.innerHTML = viewTools(); return; }
+  if(state.nav==='manage'){ c.innerHTML = viewManage(); return; }
+  if(state.nav==='stats'){ c.innerHTML = viewStats(); return; }
+  if(state.nav==='settings'){ c.innerHTML = viewSettings(); return; }
+  c.innerHTML = viewBrowse();
+}
+
+/* ====================== 閲覧 ====================== */
+function viewBrowse(){
+  // 検索欄は一度だけ描画して固定。入力中に作り直さない（IME＝子音母音の変換が壊れるのを防止）
+  return `
+    <div class="searchbar">
+      <span class="ico">🔍</span>
+      <input id="searchInput" placeholder="タイトル・タグで検索" value="${esc(state.search)}"
+        oninput="onSearch(this.value)"
+        oncompositionstart="imeComposing=true"
+        oncompositionend="onSearchEnd(this.value)">
+    </div>
+    <div id="browseResults">${browseResults()}</div>`;
+}
+
+// 検索欄を除いた「結果部分」だけを生成（入力のたびにここだけ差し替える）
+function browseResults(){
+  // 検索中
+  if(state.search.trim()){
+    const hits = resources.filter(r=> matchSearch(r, state.search));
+    return `<div class="crumbs"><span>「${esc(state.search)}」の検索結果：${hits.length}件</span></div>`
+      + (hits.length ? resListHtml(hits) : `<div class="empty">該当する資料がありません</div>`);
+  }
+
+  // カテゴリー一覧
+  if(!state.cat){
+    let html = `<div class="cat-grid">`;
+    orderedCategories().forEach(cat=>{
+      const n = resources.filter(r=>r.category===cat.key).length;
+      html += `
+        <button class="cat-card ${cat.cls}" onclick="openCat('${cat.key}')">
+          <span class="bar"></span>
+          <div class="emoji">${cat.emoji}</div>
+          <h3>${cat.key}</h3>
+          <p>${cat.desc}</p>
+          <div class="count">${n} 件の資料</div>
+        </button>`;
+    });
+    return html + `</div>`;
+  }
+
+  // 資料一覧（区分を開いたら、サブカテゴリーを挟まず直接表示。同じ区分がまとまる順）
+  const list = resources
+    .filter(r=>r.category===state.cat)
+    .sort((a,b)=>{
+      const sa=(a.subcategory||'未分類'), sb=(b.subcategory||'未分類');
+      if(sa!==sb) return sa.localeCompare(sb,'ja');
+      return (a.title||'').localeCompare(b.title||'','ja');
+    });
+  let out = `<div class="crumbs"><a onclick="clearCat()">資料を探す</a><span>›</span><span>${esc(state.cat)}</span></div>`;
+  out += list.length ? resListHtml(list) : `<div class="empty">このカテゴリーにはまだ資料がありません</div>`;
+  // このカテゴリーのチェックリスト・スケールを資料の下に表示
+  const tools = toolsInCat(state.cat);
+  if(tools.length){
+    out += `<div class="list-sec">✅ チェックリスト・🧮 スケール</div>` + toolListHtml(tools);
+  }
+  return out;
+}
+
+function resListHtml(list){
+  return `<div class="res-list">` + list.map(r=>{
+    const tags = (r.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('');
+    const yearBadge = r.year ? `<span class="tag" style="background:#eef0f2;color:#5b6b7b">${esc(r.year)}</span>` : '';
+    return `
+      <button class="res-item" onclick="openPdf('${r.id}')">
+        <span class="pdf-ico">📄</span>
+        <span class="meta">
+          <span class="t">${esc(r.title)}</span>
+          <span class="sub">${esc(r.category)}${r.subcategory?' ・ '+esc(r.subcategory):''}</span>
+          <span class="tags">${yearBadge}${tags}</span>
+        </span>
+        <span class="stat">👍 <b>${r.likes}</b><br>閲覧 <b>${r.views}</b></span>
+      </button>`;
+  }).join('') + `</div>`;
+}
+
+function onSearch(v){
+  state.search=v;
+  if(imeComposing) return;                       // 変換中は反映しない（focus・変換を維持）
+  const box=document.getElementById('browseResults');
+  if(box){ box.innerHTML=browseResults(); }      // 結果だけ差し替え。検索欄は壊さない
+  else { render(); }
+}
+function onSearchEnd(v){                          // 変換が確定したらまとめて反映
+  imeComposing=false; state.search=v;
+  const box=document.getElementById('browseResults');
+  if(box){ box.innerHTML=browseResults(); } else { render(); }
+}
+function restoreSearchFocus(){ const i=document.getElementById('searchInput'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} }
+function matchSearch(r,q){
+  const s=q.toLowerCase();
+  return (r.title||'').toLowerCase().includes(s)
+    || (r.subcategory||'').toLowerCase().includes(s)
+    || (r.category||'').toLowerCase().includes(s)
+    || (r.year||'').toLowerCase().includes(s)
+    || (r.tags||[]).some(t=>t.toLowerCase().includes(s));
+}
+function openCat(k){ state.cat=k; state.sub=null; render(); }
+function openSub(s){ state.sub=s; render(); }
+function clearCat(){ state.cat=null; state.sub=null; render(); }
+function clearSub(){ state.sub=null; render(); }
+
+/* ====================== PDFプレビュー ====================== */
+// 非公開バケット：ログイン中の人にだけ有効な一時URL（1時間）を発行
+async function fileUrl(path){
+  const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
+  if(error){ console.error(error); return null; }
+  return data.signedUrl;
+}
+
+async function openPdf(id){
+  const r = resources.find(x=>x.id===id);
+  if(!r) return;
+  current = r;
+  document.getElementById('pdfTitle').textContent = r.title;
+  document.getElementById('viewCount').textContent = r.views;
+  // 👍状態
+  const liked = getLiked().includes(r.id);
+  const lb = document.getElementById('likeBtn');
+  lb.classList.toggle('liked', liked);
+  document.getElementById('likeCount').textContent = r.likes;
+  // 付属ツール（チェックリスト・スケール）ボタンの出し分け
+  const tb = document.getElementById('toolBtn');
+  const tool = r.tool_key ? getTool(r.tool_key) : null;
+  if(tool){
+    tb.style.display='';
+    tb.textContent = (tool.type==='checklist' ? '✅ チェックリスト' : '🧮 スケール');
+    tb.onclick = ()=>openTool(tool.key);
+  } else {
+    tb.style.display='none';
+    tb.onclick = null;
+  }
+  document.getElementById('pdfModal').classList.add('show');
+  // 一時URLを取得して PDF.js でページ送り表示
+  pdfDoc=null; pdfPageNum=1; updatePdfNav();
+  setPdfStatus('読み込み中…');
+  const url = await fileUrl(r.file_path);
+  if(url){
+    document.getElementById('dlLink').href = url;
+    loadPdf(url);
+  } else {
+    setPdfStatus('PDFのURLを取得できませんでした。');
+  }
+
+  // 閲覧カウント（このセッションで初回のみ）
+  const viewed = JSON.parse(sessionStorage.getItem(viewedKey)||'[]');
+  if(!viewed.includes(r.id)){
+    viewed.push(r.id); sessionStorage.setItem(viewedKey, JSON.stringify(viewed));
+    await sb.rpc('increment_view',{resource_id:r.id});
+    r.views += 1;
+    document.getElementById('viewCount').textContent = r.views;
+  }
+}
+function closePdf(){
+  document.getElementById('pdfModal').classList.remove('show');
+  document.body.classList.remove('split-tool');
+  // ツールが開いたままなら中央表示の幅に戻す
+  if(document.getElementById('toolModal').classList.contains('show') && toolCur){
+    const card=document.getElementById('toolCard');
+    if(card) card.style.maxWidth = (toolCur.type==='scale' && toolCur.items.length>=10) ? 'min(1000px,95vw)' : '520px';
+  }
+  try{ if(pdfDoc){ pdfDoc.destroy(); } }catch(e){}
+  pdfDoc=null;
+  current=null;
+  render(); // 一覧の数字を更新
+}
+
+/* ---------------- PDF.js ページ送り表示 ---------------- */
+let pdfDoc=null, pdfPageNum=1, pdfRendering=false, pdfPendingNum=null;
+function setPdfStatus(msg){
+  const m=document.getElementById('pdfMsg'), c=document.getElementById('pdfCanvas');
+  if(msg){ m.textContent=msg; m.style.display='flex'; c.style.display='none'; }
+  else { m.style.display='none'; c.style.display='block'; }
+}
+function updatePdfNav(){
+  const info=document.getElementById('pdfPageInfo');
+  const prev=document.getElementById('pdfPrev'), next=document.getElementById('pdfNext');
+  if(!pdfDoc){ info.textContent='– / –'; prev.disabled=true; next.disabled=true; return; }
+  info.textContent=pdfPageNum+' / '+pdfDoc.numPages;
+  prev.disabled=(pdfPageNum<=1);
+  next.disabled=(pdfPageNum>=pdfDoc.numPages);
+}
+async function loadPdf(url){
+  if(!window.pdfjsLib){ setPdfStatus('PDFビューアを読み込めませんでした。「ダウンロード」から開いてください。'); return; }
+  try{
+    pdfDoc = await pdfjsLib.getDocument(url).promise;
+    pdfPageNum=1; updatePdfNav();
+    renderPdfPage(1);
+  }catch(e){
+    console.error(e);
+    setPdfStatus('PDFを表示できませんでした。「ダウンロード」から開いてください。');
+  }
+}
+async function renderPdfPage(num){
+  if(!pdfDoc) return;
+  if(pdfRendering){ pdfPendingNum=num; return; }
+  pdfRendering=true;
+  try{
+    const page=await pdfDoc.getPage(num);
+    const wrap=document.getElementById('pdfCanvasWrap');
+    const canvas=document.getElementById('pdfCanvas');
+    const ctx=canvas.getContext('2d');
+    const base=page.getViewport({scale:1});
+    // 幅・高さ両方に収まる倍率（1ページが画面内に丸ごと収まるフィットページ）
+    const availW=Math.max(200,(wrap.clientWidth||600)-24);
+    const availH=Math.max(200,(wrap.clientHeight||600)-24);
+    const scale=Math.min(availW/base.width, availH/base.height);
+    const dpr=window.devicePixelRatio||1;
+    const vp=page.getViewport({scale});
+    canvas.width=Math.floor(vp.width*dpr);
+    canvas.height=Math.floor(vp.height*dpr);
+    canvas.style.width=Math.floor(vp.width)+'px';
+    canvas.style.height=Math.floor(vp.height)+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    await page.render({canvasContext:ctx, viewport:vp}).promise;
+    setPdfStatus('');
+    wrap.scrollTop=0;
+  }catch(e){ console.error(e); }
+  pdfRendering=false;
+  if(pdfPendingNum!=null){ const n=pdfPendingNum; pdfPendingNum=null; renderPdfPage(n); }
+}
+function pdfPage(d){
+  if(!pdfDoc) return;
+  const n=pdfPageNum+d;
+  if(n<1||n>pdfDoc.numPages) return;
+  pdfPageNum=n; updatePdfNav(); renderPdfPage(n);
+}
+let pdfResizeTimer=null;
+window.addEventListener('resize',()=>{
+  if(!pdfDoc) return;
+  if(!document.getElementById('pdfModal').classList.contains('show')) return;
+  clearTimeout(pdfResizeTimer);
+  pdfResizeTimer=setTimeout(()=>renderPdfPage(pdfPageNum),200);
+});
+function getLiked(){ return JSON.parse(localStorage.getItem(likedKey)||'[]'); }
+async function toggleLike(){
+  if(!current) return;
+  let liked = getLiked();
+  const has = liked.includes(current.id);
+  const delta = has ? -1 : 1;
+  // UI即時反映
+  if(has){ liked = liked.filter(x=>x!==current.id); }
+  else { liked.push(current.id); }
+  localStorage.setItem(likedKey, JSON.stringify(liked));
+  current.likes = Math.max(0, current.likes + delta);
+  document.getElementById('likeBtn').classList.toggle('liked', !has);
+  document.getElementById('likeCount').textContent = current.likes;
+  await sb.rpc('change_like',{resource_id:current.id, delta});
+}
+
+/* ====================== 管理：資料一覧＋追加 ====================== */
+let editingId = null;
+
+function viewManage(){
+  let html = `
+    <div class="panel">
+      <h2>📤 資料を追加・管理</h2>
+      <div style="display:flex;gap:10px;margin-bottom:18px">
+        <button class="btn-add" onclick="openForm()">＋ 新しい資料を追加</button>
+      </div>`;
+  if(!resources.length){
+    html += `<div class="empty">まだ資料がありません。「＋ 新しい資料を追加」から登録してください。</div></div>`;
+    return html;
+  }
+  html += `<table class="admin"><thead><tr>
+      <th>タイトル</th><th>区分</th><th>年度</th><th>タグ</th><th>閲覧</th><th>👍</th><th></th>
+    </tr></thead><tbody>`;
+  resources.forEach(r=>{
+    const tags=(r.tags||[]).join('、');
+    html += `<tr>
+      <td><b>${esc(r.title)}</b>${r.tool_key && getTool(r.tool_key) ? `<div style="margin-top:4px"><span class="tag" style="background:#e6f4f4;color:#0a6b6b">${getTool(r.tool_key).type==='checklist'?'✅':'🧮'} ${esc(getTool(r.tool_key).title)}</span></div>` : ''}</td>
+      <td><span class="mini">${esc(r.category)}${r.subcategory?' / '+esc(r.subcategory):''}</span></td>
+      <td><span class="mini">${esc(r.year||'—')}</span></td>
+      <td><span class="mini">${esc(tags)}</span></td>
+      <td>${r.views}</td>
+      <td>${r.likes}</td>
+      <td><div class="row-act">
+        <button class="btn-edit" onclick="openForm('${r.id}')">編集</button>
+        <button class="btn-del" onclick="delResource('${r.id}')">削除</button>
+      </div></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function openForm(id){
+  editingId = id || null;
+  document.getElementById('formTitle').textContent = id ? '資料を編集' : '資料を追加';
+  document.getElementById('formStatus').textContent='';
+  const drop = document.getElementById('fileDrop');
+  document.getElementById('fileInput').value='';
+  if(id){
+    const r = resources.find(x=>x.id===id);
+    document.getElementById('fTitle').value = r.title;
+    document.getElementById('fCategory').value = r.category;
+    document.getElementById('fSub').value = r.subcategory||'';
+    document.getElementById('fYear').value = r.year||'';
+    document.getElementById('fTags').value = (r.tags||[]).join(', ');
+    document.getElementById('fTool').value = r.tool_key||'';
+    drop.textContent = '※ ファイルを変更しない場合はそのままでOK';
+    drop.classList.remove('has');
+    document.getElementById('fileHint').textContent='登録済みPDFを差し替えたい時だけ選択';
+  } else {
+    document.getElementById('fTitle').value='';
+    document.getElementById('fSub').value='';
+    document.getElementById('fYear').value='';
+    document.getElementById('fTags').value='';
+    document.getElementById('fTool').value='';
+    drop.textContent='クリックしてPDFを選択（PDFのみ）';
+    drop.classList.remove('has');
+    document.getElementById('fileHint').textContent='';
+  }
+  refreshSubDatalist(); refreshTagDatalist(); refreshYearDatalist();
+  document.getElementById('formModal').classList.add('show');
+}
+function closeForm(){ document.getElementById('formModal').classList.remove('show'); }
+function onFilePick(){
+  const f = document.getElementById('fileInput').files[0];
+  const drop=document.getElementById('fileDrop');
+  if(!f) return;
+  if(f.type!=='application/pdf'){
+    document.getElementById('fileHint').textContent='PDFファイルを選んでください';
+    document.getElementById('fileInput').value=''; return;
+  }
+  drop.textContent='📄 '+f.name; drop.classList.add('has');
+  document.getElementById('fileHint').textContent=(f.size/1024/1024).toFixed(1)+' MB';
+}
+function refreshSubDatalist(){
+  const cat=document.getElementById('fCategory').value;
+  const subs=[...new Set(resources.filter(r=>r.category===cat).map(r=>r.subcategory).filter(Boolean))];
+  document.getElementById('subList').innerHTML = subs.map(s=>`<option value="${esc(s)}">`).join('');
+}
+function refreshTagDatalist(){
+  const tags=[...new Set(resources.flatMap(r=>r.tags||[]))];
+  document.getElementById('tagList').innerHTML = tags.map(t=>`<option value="${esc(t)}">`).join('');
+}
+function refreshYearDatalist(){
+  // よく使う年度の候補 ＋ 既存資料で使われている年度
+  const base=['令和8年度','令和7年度','令和6年度','令和5年度','令和4年度'];
+  const used=resources.map(r=>r.year).filter(Boolean);
+  const years=[...new Set([...used, ...base])];
+  document.getElementById('yearList').innerHTML = years.map(y=>`<option value="${esc(y)}">`).join('');
+}
+
+async function submitForm(){
+  const title=document.getElementById('fTitle').value.trim();
+  const category=document.getElementById('fCategory').value;
+  const sub=document.getElementById('fSub').value.trim();
+  const year=document.getElementById('fYear').value.trim();
+  const tags=document.getElementById('fTags').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const toolKey=document.getElementById('fTool').value||null;
+  const file=document.getElementById('fileInput').files[0];
+  const status=document.getElementById('formStatus');
+  const btn=document.getElementById('formSubmit');
+
+  if(!title){ status.style.color='#c0392b'; status.textContent='タイトルを入力してください'; return; }
+  if(!editingId && !file){ status.style.color='#c0392b'; status.textContent='PDFファイルを選択してください'; return; }
+
+  btn.disabled=true; status.style.color='var(--ink-soft)'; status.textContent='保存中…';
+  try{
+    let filePath = null;
+    if(file){
+      const safe = file.name.replace(/[^\w.\-]/g,'_');
+      filePath = `${category}/${Date.now()}_${safe}`;
+      const { error:upErr } = await sb.storage.from(BUCKET).upload(filePath, file, {contentType:'application/pdf'});
+      if(upErr) throw upErr;
+    }
+    if(editingId){
+      const patch={ title, category, subcategory:sub, year, tags, tool_key:toolKey, updated_at:new Date().toISOString() };
+      if(filePath) patch.file_path=filePath;
+      const { error } = await sb.from('library_resources').update(patch).eq('id',editingId);
+      if(error) throw error;
+    } else {
+      const { error } = await sb.from('library_resources').insert({ title, category, subcategory:sub, year, tags, tool_key:toolKey, file_path:filePath });
+      if(error) throw error;
+    }
+    status.style.color='var(--green)'; status.textContent='保存しました';
+    await loadResources();
+    setTimeout(closeForm,500);
+  }catch(e){
+    console.error(e);
+    status.style.color='#c0392b'; status.textContent='エラー：'+(e.message||'保存に失敗しました');
+  }finally{ btn.disabled=false; }
+}
+
+async function delResource(id){
+  const r=resources.find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`「${r.title}」を削除します。よろしいですか？`)) return;
+  try{
+    if(r.file_path) await sb.storage.from(BUCKET).remove([r.file_path]);
+    const { error } = await sb.from('library_resources').delete().eq('id',id);
+    if(error) throw error;
+    await loadResources();
+  }catch(e){ console.error(e); alert('削除に失敗しました：'+(e.message||'')); }
+}
+
+/* ====================== パスワード管理（管理者のみ） ====================== */
+function viewSettings(){
+  return `
+  <div class="panel">
+    <h2>🔑 スタッフ用パスワードの変更</h2>
+    <div class="sort-note">ログイン画面で全スタッフが使う共通パスワードです。変更したら、新しいパスワードをスタッフに配り直してください。<br>※すでにログイン中のスタッフは、次回ログイン時から新しいパスワードになります。</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>新しいパスワード（6文字以上）</label>
+        <input id="pwWardNew" type="password" autocomplete="new-password" placeholder="新しいスタッフ用パスワード">
+      </div>
+      <div class="form-group">
+        <label>確認のため再入力</label>
+        <input id="pwWardConf" type="password" autocomplete="new-password" placeholder="もう一度入力">
+      </div>
+    </div>
+    <div class="upload-status" id="pwWardStatus"></div>
+    <button class="btn-add" id="pwWardBtn" onclick="changePw('ward')">スタッフ用を変更</button>
+  </div>
+
+  <div class="panel">
+    <h2>🛡️ 管理者用パスワードの変更</h2>
+    <div class="sort-note">「管理者」ボタンで管理者モードに切り替えるときのパスワードです。副看護師長だけが把握してください。<br>※変更後も今のログインはそのまま。次に管理者モードへ切り替えるときから新しいパスワードになります。</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>新しいパスワード（6文字以上）</label>
+        <input id="pwAdmNew" type="password" autocomplete="new-password" placeholder="新しい管理者用パスワード">
+      </div>
+      <div class="form-group">
+        <label>確認のため再入力</label>
+        <input id="pwAdmConf" type="password" autocomplete="new-password" placeholder="もう一度入力">
+      </div>
+    </div>
+    <div class="upload-status" id="pwAdmStatus"></div>
+    <button class="btn-add" id="pwAdmBtn" onclick="changePw('admin')">管理者用を変更</button>
+  </div>`;
+}
+
+async function changePw(target){
+  const isWard = (target==='ward');
+  const newEl  = document.getElementById(isWard?'pwWardNew':'pwAdmNew');
+  const confEl = document.getElementById(isWard?'pwWardConf':'pwAdmConf');
+  const status = document.getElementById(isWard?'pwWardStatus':'pwAdmStatus');
+  const btn    = document.getElementById(isWard?'pwWardBtn':'pwAdmBtn');
+  const label  = isWard ? 'スタッフ用' : '管理者用';
+  const pw = newEl.value, conf = confEl.value;
+  if(pw.length < 6){ status.style.color='#c0392b'; status.textContent='パスワードは6文字以上にしてください'; return; }
+  if(pw !== conf){   status.style.color='#c0392b'; status.textContent='確認用と一致しません'; return; }
+  if(!confirm(`${label}パスワードを変更します。よろしいですか？`)) return;
+  btn.disabled=true; status.style.color='var(--ink-soft)'; status.textContent='変更中…';
+  // 管理者だけが叩ける専用関数（中で呼び出し元が管理者かを確認）
+  const { error } = await sb.rpc('admin_set_password', { target, new_password: pw });
+  if(error){
+    status.style.color='#c0392b';
+    status.textContent='エラー：'+(error.message||'変更に失敗しました（security_setup後の admin_set_password 関数は実行済みですか？）');
+    btn.disabled=false; return;
+  }
+  status.style.color='var(--green)'; status.textContent=`${label}パスワードを変更しました`;
+  newEl.value=''; confEl.value='';
+  btn.disabled=false;
+}
+
+/* ====================== 活用状況（集計） ====================== */
+function viewStats(){
+  if(!resources.length){
+    return `<div class="panel"><h2>📊 活用状況</h2><div class="empty">資料が登録されると、ここに活用状況が表示されます。</div></div>`;
+  }
+  const rows=[...resources].sort((a,b)=>b.views-a.views);
+  let html=`<div class="panel"><h2>📊 活用状況 ― 資料の見直しに</h2>
+    <div class="sort-note">閲覧数が多い順。👍率＝役に立った数 ÷ 閲覧数。仕分けの目安を自動表示します。</div>
+    <table class="admin"><thead><tr>
+      <th>タイトル</th><th>区分</th><th>年度</th><th>閲覧</th><th>👍</th><th>👍率</th><th>仕分けの目安</th>
+    </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const rate = r.views>0 ? Math.round(r.likes/r.views*100) : 0;
+    const j = judge(r, rate);
+    html+=`<tr>
+      <td><b>${esc(r.title)}</b></td>
+      <td><span class="mini">${esc(r.category)}${r.subcategory?' / '+esc(r.subcategory):''}</span></td>
+      <td><span class="mini">${esc(r.year||'—')}</span></td>
+      <td>${r.views}</td><td>${r.likes}</td>
+      <td>${r.views>0?rate+'%':'—'}</td>
+      <td><span class="pill ${j.cls}">${j.label}</span></td>
+    </tr>`;
+  });
+  html+=`</tbody></table>
+    <div class="sort-note" style="margin-top:14px;line-height:1.9">
+      <b>仕分けの目安</b>　
+      <span class="pill good">良資料</span> よく見られ評価も高い／維持　
+      <span class="pill fix">要修正</span> よく見られるが評価が低い／内容を見直し　
+      <span class="pill bury">導線改善</span> 評価は高いが見られていない／周知・分類を見直し　
+      <span class="pill low">整理検討</span> 見られず評価も少ない／統合・廃棄を検討
+    </div></div>`;
+  return html;
+}
+function judge(r, rate){
+  const viewed = r.views >= 5;        // 「見られている」目安（運用しながら調整可）
+  const liked  = rate >= 40;          // 「役に立っている」目安
+  if(viewed && liked)  return {cls:'good', label:'良資料'};
+  if(viewed && !liked) return {cls:'fix',  label:'要修正'};
+  if(!viewed && r.likes>0 && liked) return {cls:'bury', label:'導線改善'};
+  return {cls:'low', label:'整理検討'};
+}
+
+/* ====================== 付属ツール（チェックリスト・スケール） ======================
+   ・ここの TOOLS にツールを定義します（増やす・直すときはここを編集）。
+   ・資料(PDF)への紐づけは「資料を管理」→編集→「付属ツール」で選びます（tool_key を保存）。
+   ・チェックリスト：リセットを押すまでチェックを保持（この端末のみ・localStorage）
+   ・スケール：開くたび まっさら（患者ごとの計算用）。リセットで全消し
+   ----------------------------------------------------------------------------- */
+const TOOLS = [
+  {
+    key:'vent_startup',
+    category:'呼吸器',
+    type:'checklist',
+    title:'人工呼吸器 始業点検',
+    items:[
+      '電源・バッテリー',
+      '回路の接続・リークテスト',
+      '加温加湿器の作動',
+      'アラーム設定の確認',
+      '換気モード・設定値',
+      '用手換気バッグの準備',
+      '吸引の準備',
+    ],
+  },
+
+  /* ---- SOFA（合計0〜24点） ---- */
+  {
+    key:'sofa',
+    category:'感染・敗血症',
+    type:'scale',
+    title:'SOFA スコア',
+    note:'各臓器0〜4点・合計0〜24点。高いほど臓器障害が重い。経時変化（前回との差）で評価。昇圧薬の量は µg/kg/min。',
+    source:'Vincent JL, et al. Intensive Care Med 1996（Sepsis-3 2016 でも採用）',
+    items:[
+      { q:'呼吸 PaO₂/FiO₂ (mmHg)', opts:[
+        {v:0,t:'≥400'},{v:1,t:'<400'},{v:2,t:'<300'},{v:3,t:'<200・人工呼吸下'},{v:4,t:'<100・人工呼吸下'} ]},
+      { q:'凝固 血小板 (×10³/µL)', opts:[
+        {v:0,t:'≥150'},{v:1,t:'<150'},{v:2,t:'<100'},{v:3,t:'<50'},{v:4,t:'<20'} ]},
+      { q:'肝 ビリルビン (mg/dL)', opts:[
+        {v:0,t:'<1.2'},{v:1,t:'1.2〜1.9'},{v:2,t:'2.0〜5.9'},{v:3,t:'6.0〜11.9'},{v:4,t:'>12.0'} ]},
+      { q:'循環 (MAP / 昇圧薬)', opts:[
+        {v:0,t:'MAP ≥70'},
+        {v:1,t:'MAP <70'},
+        {v:2,t:'ドパミン≤5 または ドブタミン(量問わず)'},
+        {v:3,t:'ドパミン>5 / アドレナリン≤0.1 / ノルアド≤0.1'},
+        {v:4,t:'ドパミン>15 / アドレナリン>0.1 / ノルアド>0.1'} ]},
+      { q:'中枢神経 GCS', opts:[
+        {v:0,t:'15'},{v:1,t:'13〜14'},{v:2,t:'10〜12'},{v:3,t:'6〜9'},{v:4,t:'<6'} ]},
+      { q:'腎 クレアチニン (mg/dL)', opts:[
+        {v:0,t:'<1.2'},{v:1,t:'1.2〜1.9'},{v:2,t:'2.0〜3.4'},{v:3,t:'3.5〜4.9 または 尿量<500mL/日'},{v:4,t:'>5.0 または 尿量<200mL/日'} ]},
+    ],
+  },
+
+  /* ---- qSOFA（合計0〜3点） ---- */
+  {
+    key:'qsofa',
+    category:'感染・敗血症',
+    type:'scale',
+    title:'qSOFA',
+    note:'感染が疑われる患者の簡易評価。2点以上で予後不良リスクが高い。',
+    source:'Sepsis-3 / Singer M, et al. JAMA 2016',
+    bands:[
+      { max:1, cls:'b-ok',  label:'リスク低' },
+      { max:3, cls:'b-bad', label:'リスク高（2点以上）' },
+    ],
+    items:[
+      { q:'呼吸数 ≥22/min', opts:[ {v:0,t:'該当しない'},{v:1,t:'該当する'} ]},
+      { q:'意識変容（GCS<15）', opts:[ {v:0,t:'該当しない'},{v:1,t:'該当する'} ]},
+      { q:'収縮期血圧 ≤100 mmHg', opts:[ {v:0,t:'該当しない'},{v:1,t:'該当する'} ]},
+    ],
+  },
+
+  /* ---- NIHSS（合計0〜42点） ---- */
+  {
+    key:'nihss',
+    category:'脳神経・脳',
+    type:'scale',
+    title:'NIHSS（脳卒中重症度）',
+    note:'各項目を加算（合計0〜42点）。検査不能(UN)項目は0点として扱う簡易版。',
+    source:'NIH / NINDS（重症度区分は一般的分類）',
+    bands:[
+      { max:0,   cls:'b-ok',   label:'異常なし' },
+      { max:4,   cls:'b-ok',   label:'軽症' },
+      { max:15,  cls:'b-warn', label:'中等症' },
+      { max:20,  cls:'b-warn', label:'中等〜重症' },
+      { max:42,  cls:'b-bad',  label:'重症' },
+    ],
+    items:[
+      { q:'1a 意識水準', opts:[ {v:0,t:'清明'},{v:1,t:'軽度傾眠'},{v:2,t:'昏迷'},{v:3,t:'昏睡'} ]},
+      { q:'1b 質問（月・年齢）', opts:[ {v:0,t:'両方正答'},{v:1,t:'片方正答'},{v:2,t:'両方誤答'} ]},
+      { q:'1c 従命（開閉眼・把握）', opts:[ {v:0,t:'両方可'},{v:1,t:'片方可'},{v:2,t:'両方不可'} ]},
+      { q:'2 注視', opts:[ {v:0,t:'正常'},{v:1,t:'部分的注視麻痺'},{v:2,t:'完全注視麻痺'} ]},
+      { q:'3 視野', opts:[ {v:0,t:'欠損なし'},{v:1,t:'部分半盲'},{v:2,t:'完全半盲'},{v:3,t:'両側半盲'} ]},
+      { q:'4 顔面麻痺', opts:[ {v:0,t:'正常'},{v:1,t:'軽度'},{v:2,t:'部分的'},{v:3,t:'完全'} ]},
+      { q:'5a 上肢（左）', opts:[ {v:0,t:'下垂なし'},{v:1,t:'動揺する'},{v:2,t:'重力に抗せる程度'},{v:3,t:'重力に抗せない'},{v:4,t:'全く動かない'} ]},
+      { q:'5b 上肢（右）', opts:[ {v:0,t:'下垂なし'},{v:1,t:'動揺する'},{v:2,t:'重力に抗せる程度'},{v:3,t:'重力に抗せない'},{v:4,t:'全く動かない'} ]},
+      { q:'6a 下肢（左）', opts:[ {v:0,t:'下垂なし'},{v:1,t:'動揺する'},{v:2,t:'重力に抗せる程度'},{v:3,t:'重力に抗せない'},{v:4,t:'全く動かない'} ]},
+      { q:'6b 下肢（右）', opts:[ {v:0,t:'下垂なし'},{v:1,t:'動揺する'},{v:2,t:'重力に抗せる程度'},{v:3,t:'重力に抗せない'},{v:4,t:'全く動かない'} ]},
+      { q:'7 運動失調', opts:[ {v:0,t:'なし'},{v:1,t:'1肢'},{v:2,t:'2肢'} ]},
+      { q:'8 感覚', opts:[ {v:0,t:'正常'},{v:1,t:'軽度〜中等度'},{v:2,t:'重度〜脱失'} ]},
+      { q:'9 言語', opts:[ {v:0,t:'正常'},{v:1,t:'軽度〜中等度失語'},{v:2,t:'高度失語'},{v:3,t:'全失語・無言'} ]},
+      { q:'10 構音障害', opts:[ {v:0,t:'正常'},{v:1,t:'軽度〜中等度'},{v:2,t:'高度'} ]},
+      { q:'11 消去・無視', opts:[ {v:0,t:'なし'},{v:1,t:'1感覚で半側無視'},{v:2,t:'重度の半側無視'} ]},
+    ],
+  },
+
+  /* ---- RASS（単一選択 +4〜−5） ---- */
+  {
+    key:'rass',
+    category:'呼吸器',
+    type:'single',
+    title:'RASS（鎮静スケール）',
+    note:'観察して1つだけ選ぶ。0=清明で穏やか。＋は興奮、−は鎮静。',
+    source:'Sessler CN, et al. Am J Respir Crit Care Med 2002',
+    opts:[
+      {v:4, t:'攻撃的：闘争的・スタッフに危険'},
+      {v:3, t:'強い興奮：チューブ/カテーテルを引き抜く'},
+      {v:2, t:'興奮：非協調運動・人工呼吸器に逆らう'},
+      {v:1, t:'落ち着きなし：不安だが動きは過激でない'},
+      {v:0, t:'意識清明・穏やか'},
+      {v:-1,t:'傾眠：呼びかけで10秒以上の開眼/アイコンタクト'},
+      {v:-2,t:'浅い鎮静：呼びかけで10秒未満の開眼'},
+      {v:-3,t:'中等度鎮静：呼びかけで動き/開眼（アイコンタクトなし）'},
+      {v:-4,t:'深い鎮静：呼びかけ無反応・身体刺激で動き'},
+      {v:-5,t:'昏睡：呼びかけ・身体刺激に無反応'},
+    ],
+  },
+];
+function getTool(key){ return TOOLS.find(t=>t.key===key) || null; }
+function toolsInCat(cat){ return TOOLS.filter(t=>t.category===cat); }
+function viewTools(){
+  const checks = TOOLS.filter(t=>t.type==='checklist');
+  const scales = TOOLS.filter(t=>t.type!=='checklist');
+  let html = `<div class="crumbs"><span>スケール・チェックリスト集</span></div>`;
+  if(checks.length){ html += `<div class="list-sec">✅ チェックリスト</div>` + toolListHtml(checks); }
+  if(scales.length){ html += `<div class="list-sec">🧮 スケール</div>` + toolListHtml(scales); }
+  if(!checks.length && !scales.length){ html += `<div class="empty">ツールがありません</div>`; }
+  return html;
+}
+function toolListHtml(tools){
+  return `<div class="res-list">` + tools.map(t=>{
+    const isCk = t.type==='checklist';
+    const emoji = isCk ? '✅' : '🧮';
+    const label = isCk ? 'チェックリスト' : 'スケール';
+    return `
+      <button class="res-item ${isCk?'is-check':'is-scale'}" onclick="openTool('${t.key}')">
+        <span class="pdf-ico">${emoji}</span>
+        <span class="meta">
+          <span class="t">${esc(t.title)}</span>
+          <span class="sub">${label}</span>
+        </span>
+      </button>`;
+  }).join('') + `</div>`;
+}
+function buildToolSelect(){
+  const sel=document.getElementById('fTool');
+  if(!sel) return;
+  const opts=['<option value="">なし</option>'].concat(
+    TOOLS.map(t=>`<option value="${esc(t.key)}">${t.type==='checklist'?'✅':'🧮'} ${esc(t.title)}（${t.type==='checklist'?'チェックリスト':'スケール'}）</option>`)
+  );
+  sel.innerHTML=opts.join('');
+}
+const checkKey=(k)=>'icu_lib_check_'+k;
+
+let toolCur=null;
+function openTool(key){
+  const t=getTool(key); if(!t) return;
+  toolCur=t;
+  // 資料を開いた状態で（横幅のある画面で）開いたら、資料を左・ツールを右に並べる
+  const pdfOpen=document.getElementById('pdfModal').classList.contains('show');
+  const split=pdfOpen && window.matchMedia('(min-width:768px)').matches;
+  document.body.classList.toggle('split-tool', split);
+  const card=document.getElementById('toolCard');
+  if(card) card.style.maxWidth = split ? 'calc(50% - 28px)'
+    : ((t.type==='scale' && t.items.length>=10) ? 'min(1000px,95vw)' : '520px');
+  document.getElementById('toolTitle').textContent=t.title;
+  const body=document.getElementById('toolBody');
+  if(t.type==='checklist'){ body.innerHTML=checklistHtml(t); }
+  else if(t.type==='single'){ body.innerHTML=singleHtml(t); }
+  else { body.innerHTML=scaleHtml(t); }
+  document.getElementById('toolModal').classList.add('show');
+  if(t.type==='checklist') wireChecklist();
+  else if(t.type==='single') wireSingle();
+  else wireScale();
+  // 分割表示に切り替えたら、狭くなった幅にPDFを描き直してフィットさせる
+  if(split && pdfDoc) requestAnimationFrame(()=>renderPdfPage(pdfPageNum));
+}
+function closeTool(){
+  document.getElementById('toolModal').classList.remove('show');
+  if(document.body.classList.contains('split-tool')){
+    document.body.classList.remove('split-tool');
+    if(pdfDoc) requestAnimationFrame(()=>renderPdfPage(pdfPageNum)); // 全幅に戻して再フィット
+  }
+}
+
+/* ---- チェックリスト ---- */
+function checklistHtml(t){
+  let saved=[]; try{ saved=JSON.parse(localStorage.getItem(checkKey(t.key))||'[]'); }catch(e){ saved=[]; }
+  const done=saved.filter(i=>i<t.items.length).length;
+  const rows=t.items.map((it,i)=>{
+    const d=saved.includes(i);
+    return `<div class="ck-row ${d?'done':''}" data-i="${i}"><span class="ck-box">${d?'✓':''}</span><span class="ck-lbl">${esc(it)}</span></div>`;
+  }).join('');
+  return `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span id="ckCount" style="font-size:13px;color:var(--ink-soft)">${done}/${t.items.length} 完了</span>
+        <button class="tool-reset" onclick="resetChecklist()">リセット</button>
+      </div>
+      <div class="tool-bar-track"><div class="tool-bar-fill" id="ckFill" style="width:${Math.round(done/t.items.length*100)}%"></div></div>
+    </div>
+    <div id="ckList" style="display:flex;flex-direction:column;gap:8px">${rows}</div>
+    <div class="tool-note">チェックはリセットを押すまで保持されます（この端末のみ）</div>`;
+}
+function wireChecklist(){
+  document.querySelectorAll('#ckList .ck-row').forEach(row=>{
+    row.addEventListener('click',()=>{
+      row.classList.toggle('done');
+      row.querySelector('.ck-box').textContent = row.classList.contains('done') ? '✓' : '';
+      saveChecklist(); refreshChecklist();
+    });
+  });
+}
+function curCheckedIdx(){ return [...document.querySelectorAll('#ckList .ck-row.done')].map(r=>+r.dataset.i); }
+function saveChecklist(){ if(toolCur) localStorage.setItem(checkKey(toolCur.key), JSON.stringify(curCheckedIdx())); }
+function refreshChecklist(){
+  if(!toolCur) return;
+  const total=toolCur.items.length, done=curCheckedIdx().length;
+  document.getElementById('ckCount').textContent=done+'/'+total+' 完了';
+  document.getElementById('ckFill').style.width=Math.round(done/total*100)+'%';
+}
+function resetChecklist(){
+  document.querySelectorAll('#ckList .ck-row').forEach(r=>{ r.classList.remove('done'); r.querySelector('.ck-box').textContent=''; });
+  saveChecklist(); refreshChecklist();
+}
+
+/* ---- 共通フッター（補足・出典・要確認） ---- */
+function toolFooter(t){
+  const note = t.note ? `<div class="tool-note">${esc(t.note)}</div>` : '';
+  const src  = t.source ? `<div class="tool-note">出典：${esc(t.source)}</div>` : '';
+  return `${note}${src}<div class="tool-note">※たたき台です。実運用前に、貴施設の正式版・最新版で確認してください。</div>`;
+}
+
+/* ---- スケール（合計型：各項目で1つ選び加算） ---- */
+function scaleHtml(t){
+  const items=t.items.map((it,i)=>{
+    const opts=it.opts.map(o=>`<button class="sc-opt" data-v="${o.v}"><span class="v">${o.v}</span><span>${esc(o.t)}</span></button>`).join('');
+    return `<div class="sc-item"><div class="q">${esc(it.q)}</div><div class="sc-opts" data-i="${i}">${opts}</div></div>`;
+  }).join('');
+  const hasBands=(t.bands||[]).length>0;
+  return `
+    <div id="scList" class="${t.items.length>=10?'multi':''}">${items}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <span class="tool-total">合計<b id="scTotal">0</b>点</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${hasBands?`<span class="tool-band" id="scBand">未選択</span>`:''}
+        <button class="tool-reset" onclick="resetScale()">リセット</button>
+      </div>
+    </div>
+    ${toolFooter(t)}`;
+}
+function wireScale(){
+  document.querySelectorAll('#scList .sc-opts').forEach(group=>{
+    group.querySelectorAll('.sc-opt').forEach(c=>{
+      c.addEventListener('click',()=>{
+        const was=c.classList.contains('sel');
+        group.querySelectorAll('.sc-opt').forEach(x=>x.classList.remove('sel'));
+        if(!was) c.classList.add('sel');
+        refreshScale();
+      });
+    });
+  });
+  refreshScale();
+}
+function refreshScale(){
+  if(!toolCur) return;
+  let total=0, anySel=false;
+  document.querySelectorAll('#scList .sc-opts').forEach(group=>{
+    const s=group.querySelector('.sc-opt.sel');
+    if(s){ total+=(+s.dataset.v); anySel=true; }
+  });
+  document.getElementById('scTotal').textContent=total;
+  const band=document.getElementById('scBand');
+  if(!band) return;
+  if(!anySel){ band.className='tool-band'; band.textContent='未選択'; return; }
+  const b=(toolCur.bands||[]).find(x=>total<=x.max) || {cls:'',label:'—'};
+  band.className='tool-band '+b.cls;
+  band.textContent=b.label+'（目安）';
+}
+function resetScale(){
+  document.querySelectorAll('#scList .sc-opt').forEach(c=>c.classList.remove('sel'));
+  refreshScale();
+}
+
+/* ---- 単一選択型（RASS：1つだけ選ぶ） ---- */
+function singleHtml(t){
+  const opts=t.opts.map(o=>`<button class="sc-opt" data-v="${o.v}"><span class="v">${o.v>0?'+'+o.v:o.v}</span><span>${esc(o.t)}</span></button>`).join('');
+  return `
+    <div id="scSingle" class="sc-opts">${opts}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <span class="tool-total">判定<b id="scResult">—</b></span>
+      <button class="tool-reset" onclick="resetSingle()">リセット</button>
+    </div>
+    ${toolFooter(t)}`;
+}
+function wireSingle(){
+  document.querySelectorAll('#scSingle .sc-opt').forEach(c=>{
+    c.addEventListener('click',()=>{
+      const was=c.classList.contains('sel');
+      document.querySelectorAll('#scSingle .sc-opt').forEach(x=>x.classList.remove('sel'));
+      if(!was) c.classList.add('sel');
+      refreshSingle();
+    });
+  });
+  refreshSingle();
+}
+function refreshSingle(){
+  const r=document.getElementById('scResult');
+  const s=document.querySelector('#scSingle .sc-opt.sel');
+  if(!s){ r.textContent='—'; return; }
+  const v=+s.dataset.v;
+  r.textContent=(v>0?'+'+v:String(v));
+}
+function resetSingle(){
+  document.querySelectorAll('#scSingle .sc-opt').forEach(c=>c.classList.remove('sel'));
+  refreshSingle();
+}
+
+/* ---------------- ユーティリティ ---------------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>
